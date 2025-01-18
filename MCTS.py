@@ -47,6 +47,15 @@ class Node:
 
         return max(self.children.items(), key=lambda pair: pair[1]._get_eval(c))
     
+    def _get_variance(self):
+        """
+        return the variance of values of child nodes.
+        """
+
+        values = np.array([pair[1].v for pair in self.children.items()])
+        var = np.var(values)
+        return var
+    
 
 class MCTS:
 
@@ -131,6 +140,7 @@ class MCTS:
             value, policy = self._predict(game)
             valid_moves = game.get_valid_moves()
             value *= game.get_player()
+            value = value.item()
             move_indices = [game.action_to_ind(move) for move in valid_moves]
             # expand
             for move, p in zip(valid_moves, policy[move_indices]):
@@ -146,8 +156,26 @@ class MCTS:
         corresponding policy.
         """
 
-        for _ in range(self.n_sim):
+        var_upper_bound = 0.1
+        var_lower_bound = 0.01
+        early_stop_iter = self.n_sim // 2
+
+        for _ in range(early_stop_iter):
             self._simulate(game)
+        
+        # if the variance if smaller then the threshold, it may be an indication of 
+        # converging policy, can save computation by early stopping.
+        var = self.root._get_variance()
+        if var < var_lower_bound:
+            for _ in range(early_stop_iter):
+                self._simulate(game)
+        
+        # if the variance if larger then the threshold, it may be an indication of 
+        # decisive state, may reuqire more simulations.
+        var = self.root._get_variance()
+        if var > var_upper_bound:
+            for _ in range(self.n_sim):
+                self._simulate(game)
         
         moves = [act for act, _ in self.root.children.items()]
         visits = np.array([node.n for _, node in self.root.children.items()])
